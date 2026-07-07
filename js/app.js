@@ -7,17 +7,21 @@ const CONFIG = {
   defaultLang: 'he',
   accent: '#F2B32B',
   hideLocked: false,
-  showAdmin: true
+  showAdmin: true,
+  points: { dir: 1, exact: 2 } // correct 1X2 = 1 pt; exact score adds +2 (3 total)
 };
 
 const state = {
   tab: 'picks',
   name: '',
   picks: {},
+  scores: {},    // my exact-score picks: { matchId: {h, a} }
   submitted: false,
   toast: '',
+  toastError: false,
   results: {},
   adv: {},
+  resScores: {}, // admin-entered actual scores: { matchId: {h, a} }
   lang: '',
   adminUnlocked: false,
   pinInput: '',
@@ -55,13 +59,34 @@ function resolved() {
   return resolveMatches(buildMatches(t(), tName), state.results, state.adv, state.now, t(), tName);
 }
 
-function score(picks) {
-  const res = state.results || {};
-  return Object.keys(res).reduce((n, id) => n + (res[id] && picks && picks[id] === res[id] ? 1 : 0), 0);
+function score(picks, scores) {
+  const res = state.results || {}, rs = state.resScores || {};
+  return Object.keys(res).reduce((n, id) => {
+    if (!res[id] || !picks || picks[id] !== res[id]) return n;
+    n += CONFIG.points.dir;
+    const mine = scores && scores[id], actual = rs[id];
+    if (dirFromScore(mine) && dirFromScore(actual) && +mine.h === +actual.h && +mine.a === +actual.a) {
+      n += CONFIG.points.exact;
+    }
+    return n;
+  }, 0);
+}
+
+/* True when this participant nailed the exact score of a decided match. */
+function exactHit(scores, mid) {
+  const mine = scores && scores[mid], actual = (state.resScores || {})[mid];
+  return !!(dirFromScore(mine) && dirFromScore(actual) && +mine.h === +actual.h && +mine.a === +actual.a && (state.results || {})[mid]);
 }
 
 function persistMe() {
-  Store.saveMe({ name: state.name, picks: state.picks, submitted: state.submitted });
+  Store.saveMe({ name: state.name, picks: state.picks, scores: state.scores, submitted: state.submitted });
+}
+
+/* '1' | 'X' | '2' derived from an exact score, or null if incomplete. */
+function dirFromScore(sc) {
+  if (!sc || sc.h == null || sc.a == null || sc.h === '' || sc.a === '') return null;
+  const h = +sc.h, a = +sc.a;
+  return h > a ? '1' : h < a ? '2' : 'X';
 }
 
 /* Registered participants, with this device's live name/picks overriding its stored row. */
@@ -69,18 +94,20 @@ function participants() {
   const reg = Store.loadBoard();
   const myId = Store.deviceId();
   const parts = Object.entries(reg).map(([id, v]) => ({
+    id,
     name: id === myId && state.name.trim() ? state.name.trim() : (v.name || '—'),
     picks: id === myId ? state.picks : (v.picks || {}),
+    scores: id === myId ? state.scores : (v.scores || {}),
     isMe: id === myId
   }));
   if (!parts.some(p => p.isMe) && state.name.trim()) {
-    parts.push({ name: state.name.trim(), picks: state.picks, isMe: true });
+    parts.push({ id: myId, name: state.name.trim(), picks: state.picks, scores: state.scores, isMe: true });
   }
   return parts;
 }
 
 function standingsRows() {
-  const rows = participants().map(p => ({ name: p.name, pts: score(p.picks), isMe: p.isMe }));
+  const rows = participants().map(p => ({ name: p.name, pts: score(p.picks, p.scores), isMe: p.isMe, picks: p.picks, scores: p.scores }));
   rows.sort((a, b) => b.pts - a.pts || a.name.localeCompare(b.name, lang()));
   return rows;
 }
@@ -142,6 +169,7 @@ function renderPicksScreen(all) {
           '<button ' + btn('2') + '>' + badgeHtml(m.away[1]) +
             '<span class="pick-team">' + esc(tName(m.away[0])) + '</span><span class="pick-num">2</span></button>' +
         '</div>' +
+        (m.known ? scoreRowHtml(m, (state.scores || {})[m.id], m.locked, false) : '') +
         (m.note ? '<div class="match-note">' + esc(m.note) + '</div>' : '') +
       '</div>';
   }).join('');
@@ -151,9 +179,22 @@ function renderPicksScreen(all) {
     ? '<button class="wa-btn" data-action="share-picks">' + esc(S.shareWa) + '</button>' : '') +
     '<button class="wa-btn" data-action="share-app">' + esc(S.shareApp) + '</button>';
 
+  const helpOpen = state.helpOpen;
+  const helpCard = '' +
+    '<div class="help-card' + (helpOpen ? ' open' : '') + '">' +
+      '<div class="help-head" data-action="help"><span>' + esc(S.helpTitle) + '</span><span class="help-chev">\u25bc</span></div>' +
+      '<div class="help-body">' +
+        '<div class="help-what">' + esc(S.helpWhat) + '</div>' +
+        [S.helpS1, S.helpS2, S.helpS3, S.helpS4, S.helpS5].map((txt, i) =>
+          '<div class="help-step"><span class="help-step-num">' + (i + 1) + '</span><span>' + esc(txt) + '</span></div>').join('') +
+        '<div class="help-scoring">' + esc(S.helpScoring) + '</div>' +
+      '</div>' +
+    '</div>';
+
   return '' +
     '<div class="screen-picks">' +
       (finished ? '<div class="finished-banner">' + esc(S.finishedBanner) + '</div>' : '') +
+      helpCard +
       '<div class="name-card">' +
         '<span class="name-label">' + esc(S.yourName) + '</span>' +
         '<input class="name-input" data-input="name" value="' + esc(state.name) + '" placeholder="' + esc(S.namePh) + '">' +
@@ -165,6 +206,28 @@ function renderPicksScreen(all) {
     '</div>';
 }
 
+/* Two small numeric inputs for an exact score. isAdmin switches label + green accent. */
+function scoreRowHtml(m, sc, locked, isAdmin) {
+  const S = t();
+  const dis = locked ? ' disabled' : '';
+  const attr = isAdmin ? 'data-rscore' : 'data-score';
+  const val = side => (sc && sc[side] != null && sc[side] !== '' ? esc(sc[side]) : '');
+  return '<div class="score-row' + (isAdmin ? ' admin' : '') + '">' +
+    '<span class="score-label">' + esc(isAdmin ? S.adminScoreLabel : S.scoreLabel) + '</span>' +
+    '<input class="score-input" type="tel" inputmode="numeric" maxlength="2" ' + attr + '="' + m.id + '" data-side="h" value="' + val('h') + '"' + dis + '>' +
+    '<span class="score-colon">:</span>' +
+    '<input class="score-input" type="tel" inputmode="numeric" maxlength="2" ' + attr + '="' + m.id + '" data-side="a" value="' + val('a') + '"' + dis + '>' +
+  '</div>';
+}
+
+/* "1 · France · 2:1 ⭐" — direction pick + optional exact score + star on exact hit. */
+function pickChipLabel(m, v, sc) {
+  const S = t();
+  let label = v === 'X' ? 'X · ' + S.draw : v === '1' ? '1 · ' + tName(m.home[0]) : '2 · ' + tName(m.away[0]);
+  if (dirFromScore(sc)) label += ' · ' + sc.h + ':' + sc.a;
+  return label;
+}
+
 /* Per-match cards listing each participant's pick. includeUnlocked=true is the
    admin view (behind the PIN gate) — it also shows picks for open matches. */
 function breakdownGroups(all, includeUnlocked) {
@@ -174,7 +237,7 @@ function breakdownGroups(all, includeUnlocked) {
     const res = (state.results || {})[m.id];
     const prow = parts.filter(p => p.picks && p.picks[m.id]).map(p => {
       const v = p.picks[m.id];
-      const label = v === 'X' ? 'X · ' + S.draw : v === '1' ? '1 · ' + tName(m.home[0]) : '2 · ' + tName(m.away[0]);
+      const label = pickChipLabel(m, v, (p.scores || {})[m.id]) + (exactHit(p.scores, m.id) ? ' \u2b50' : '');
       const ok = res ? v === res : null;
       const cls = ok === null ? '' : ok ? ' ok' : ' bad';
       return '<div class="breakdown-row"><span class="breakdown-name">' + esc(p.name) + '</span>' +
@@ -202,13 +265,35 @@ function renderBoardScreen(all) {
       '<span class="champ-sub">' + esc(rows[0].pts + S.champSubA + tName(champ)) + '</span>' +
     '</div>' : '';
 
-  const rowsHtml = rows.map((r, i) => '' +
-    '<div class="board-row' + (r.isMe ? ' me' : '') + '">' +
-      '<span class="rank' + (i < 3 ? ' r' + (i + 1) : '') + '">' + (i + 1) + '</span>' +
-      '<span class="board-name">' + esc(r.name) + '</span>' +
-      (r.isMe ? '<span class="you-badge">' + esc(S.youBadge) + '</span>' : '') +
-      '<span class="board-pts">' + r.pts + '</span>' +
-    '</div>').join('');
+  const rowsHtml = rows.map((r, i) => {
+    const expanded = state.expandedRow === r.name;
+    let detail = '';
+    if (expanded) {
+      const lockedRows = all.filter(m => m.locked && m.known && r.picks && r.picks[m.id]).map(m => {
+        const v = r.picks[m.id];
+        const res = (state.results || {})[m.id];
+        const ok = res ? v === res : null;
+        const cls = ok === null ? '' : ok ? ' ok' : ' bad';
+        const label = pickChipLabel(m, v, (r.scores || {})[m.id]) + (exactHit(r.scores, m.id) ? ' \u2b50' : '');
+        return '<div class="breakdown-row"><span class="breakdown-name">' + esc(tName(m.home[0]) + ' \u2014 ' + tName(m.away[0])) + '</span>' +
+          '<span class="pick-chip' + cls + '">' + esc(label) + '</span></div>';
+      });
+      const hiddenCount = all.filter(m => !m.locked && r.picks && r.picks[m.id]).length;
+      detail = '<div class="row-detail">' +
+        (lockedRows.length ? lockedRows.join('') : '<div class="row-detail-empty">' + esc(S.rowNoRevealed) + '</div>') +
+        (hiddenCount ? '<div class="row-detail-note">' + esc(S.rowHiddenA + hiddenCount + S.rowHiddenB) + '</div>' : '') +
+      '</div>';
+    }
+    return '' +
+    '<div class="board-item">' +
+      '<div class="board-row' + (r.isMe ? ' me' : '') + (expanded ? ' open' : '') + '" data-action="row" data-val="' + esc(r.name) + '">' +
+        '<span class="rank' + (i < 3 ? ' r' + (i + 1) : '') + '">' + (i + 1) + '</span>' +
+        '<span class="board-name">' + esc(r.name) + '</span>' +
+        (r.isMe ? '<span class="you-badge">' + esc(S.youBadge) + '</span>' : '') +
+        '<span class="board-pts">' + r.pts + '</span>' +
+      '</div>' + detail +
+    '</div>';
+  }).join('');
 
   /* Picks are revealed per match only once it locks, to prevent copying. */
   const groups = breakdownGroups(all, false);
@@ -320,9 +405,29 @@ function renderAdminScreen(all) {
           '<button ' + btn('2') + '>' + badgeHtml(m.away[1]) +
             '<span class="pick-team">' + esc(tName(m.away[0])) + '</span><span class="pick-num">2</span></button>' +
         '</div>' +
+        scoreRowHtml(m, (state.resScores || {})[m.id], false, true) +
         advRow +
       '</div>';
   }).join('');
+
+  const reg = Store.loadBoard();
+  const partRows = Object.entries(reg).map(([id, v]) => {
+    const pts = score(v.picks || {}, v.scores || {});
+    const nPicks = Object.keys(v.picks || {}).filter(k => (v.picks || {})[k]).length;
+    return '<div class="part-row">' +
+      '<span class="board-name">' + esc(v.name || '—') + '</span>' +
+      '<span class="part-meta">' + nPicks + ' · ' + pts + '</span>' +
+      '<button class="remove-btn" data-action="remove-participant" data-val="' + esc(id) + '" data-name="' + esc(v.name || '') + '">\u2715</button>' +
+    '</div>';
+  }).join('');
+  const partsSection = '' +
+    '<div class="breakdown-wrap">' +
+      '<div class="breakdown-head">' +
+        '<span class="breakdown-title">' + esc(S.adminParticipants) + '</span>' +
+        '<span class="breakdown-note">' + esc(S.adminPartNote) + '</span>' +
+      '</div>' +
+      (partRows || '<div class="breakdown-empty">' + esc(S.adminPicksEmpty) + '</div>') +
+    '</div>';
 
   const groups = breakdownGroups(all, true);
   const picksSection = '' +
@@ -339,6 +444,7 @@ function renderAdminScreen(all) {
       '<div class="admin-info">' + esc(S.adminInfo) + '</div>' +
       cards +
       '<button class="reset-btn" data-action="reset-results">' + esc(S.resetResults) + '</button>' +
+      partsSection +
       picksSection +
     '</div>';
 }
@@ -386,7 +492,7 @@ function render() {
       (CONFIG.showAdmin ? tabBtn('admin', S.tabAdmin) : '') +
     '</div>' +
     screen +
-    (state.toast ? '<div class="toast">' + esc(state.toast) + '</div>' : '');
+    (state.toast ? '<div class="toast' + (state.toastError ? ' error' : '') + '">' + esc(state.toast) + '</div>' : '');
 }
 
 /* ---------- targeted updates (keep input focus, 1s tick) ---------- */
@@ -415,11 +521,12 @@ function tick() {
 
 /* ---------- actions ---------- */
 
-function showToast(msg) {
+function showToast(msg, isError) {
   state.toast = msg;
+  state.toastError = !!isError;
   render();
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { state.toast = ''; render(); }, 2600);
+  toastTimer = setTimeout(() => { state.toast = ''; state.toastError = false; render(); }, 2600);
 }
 
 function tryPin() {
@@ -431,10 +538,11 @@ function tryPin() {
   render();
 }
 
-function saveResultsState(results, adv) {
+function saveResultsState(results, adv, resScores) {
   state.results = results;
   state.adv = adv;
-  Store.saveResults(results, adv);
+  state.resScores = resScores;
+  Store.saveResults(results, adv, resScores);
 }
 
 function waShare(text) {
@@ -445,7 +553,10 @@ function sharePicksText(all) {
   const S = t();
   const pickLabelFor = m => {
     const v = state.picks[m.id];
-    return v === 'X' ? 'X (' + S.draw + ')' : v === '1' ? tName(m.home[0]) : tName(m.away[0]);
+    let lbl = v === 'X' ? 'X (' + S.draw + ')' : v === '1' ? tName(m.home[0]) : tName(m.away[0]);
+    const sc = (state.scores || {})[m.id];
+    if (dirFromScore(sc)) lbl += ' ' + sc.h + ':' + sc.a;
+    return lbl;
   };
   const lines = all.filter(m => state.picks[m.id])
     .map(m => '- ' + tName(m.home[0]) + ' / ' + tName(m.away[0]) + ': ' + pickLabelFor(m)).join('\n');
@@ -484,7 +595,14 @@ root.addEventListener('click', e => {
     case 'pick': {
       const m = all.find(x => x.id === mid);
       if (!m || m.locked) return;
-      state.picks = { ...state.picks, [mid]: state.picks[mid] === val ? undefined : val };
+      const newPick = state.picks[mid] === val ? undefined : val;
+      state.picks = { ...state.picks, [mid]: newPick };
+      const scDir = dirFromScore((state.scores || {})[mid]);
+      if (scDir && scDir !== newPick) { // cleared or contradicting → drop the exact score
+        const scores = { ...state.scores };
+        delete scores[mid];
+        state.scores = scores;
+      }
       persistMe();
       render();
       break;
@@ -492,7 +610,12 @@ root.addEventListener('click', e => {
     case 'submit': {
       const sub = submitState(all);
       if (!sub.canSubmit) return;
-      Store.upsertParticipant(Store.deviceId(), state.name.trim(), state.picks);
+      const myId = Store.deviceId();
+      const nm = state.name.trim();
+      const taken = Object.entries(Store.loadBoard())
+        .some(([id, v]) => id !== myId && (v.name || '').trim().toLowerCase() === nm.toLowerCase());
+      if (taken) { showToast(t().nameTaken, true); return; }
+      Store.upsertParticipant(myId, nm, state.picks, state.scores);
       state.submitted = true;
       persistMe();
       showToast(t().toastSaved);
@@ -507,6 +630,23 @@ root.addEventListener('click', e => {
     case 'share-app':
       waShare(shareAppText());
       break;
+    case 'help':
+      state.helpOpen = !state.helpOpen;
+      try { localStorage.setItem('wc26-oranim-help', state.helpOpen ? '' : '1'); } catch (err) {}
+      render();
+      break;
+    case 'row':
+      state.expandedRow = state.expandedRow === val ? null : val;
+      render();
+      break;
+    case 'remove-participant': {
+      const nm = el.getAttribute('data-name') || '';
+      if (!window.confirm(t().removeConfirmA + nm + t().removeConfirmB)) return;
+      Store.removeParticipant(val);
+      if (val === Store.deviceId()) { state.submitted = false; persistMe(); }
+      render();
+      break;
+    }
     case 'try-pin':
       tryPin();
       break;
@@ -515,24 +655,71 @@ root.addEventListener('click', e => {
       const results = { ...state.results, [mid]: cur === val ? undefined : val };
       const adv = { ...state.adv };
       if (results[mid] !== 'X') delete adv[mid];
-      saveResultsState(results, adv);
+      const resScores = { ...state.resScores };
+      const scDir = dirFromScore(resScores[mid]);
+      if (scDir && scDir !== results[mid]) delete resScores[mid];
+      saveResultsState(results, adv, resScores);
       render();
       break;
     }
     case 'adv': {
       const adv = { ...state.adv, [mid]: (state.adv || {})[mid] === val ? undefined : val };
-      saveResultsState({ ...state.results }, adv);
+      saveResultsState({ ...state.results }, adv, { ...state.resScores });
       render();
       break;
     }
     case 'reset-results':
-      saveResultsState({}, {});
+      saveResultsState({}, {}, {});
       render();
       break;
   }
 });
 
+/* Sync the gold/green selection classes of one match's three buttons in place
+   (used by score typing so the input keeps focus — no full render). */
+function refreshDirButtons(mid, action, cls) {
+  const cur = action === 'pick' ? state.picks[mid] : (state.results || {})[mid];
+  ['1', 'X', '2'].forEach(v => {
+    const b = root.querySelector('[data-action="' + action + '"][data-match="' + mid + '"][data-val="' + v + '"]');
+    if (b) b.classList.toggle(cls, cur === v);
+  });
+}
+
 root.addEventListener('input', e => {
+  const scoreEl = e.target.closest('[data-score],[data-rscore]');
+  if (scoreEl) {
+    const clean = scoreEl.value.replace(/\D/g, '').slice(0, 2);
+    if (clean !== scoreEl.value) scoreEl.value = clean;
+    const side = scoreEl.getAttribute('data-side');
+    const isAdmin = scoreEl.hasAttribute('data-rscore');
+    const mid = scoreEl.getAttribute(isAdmin ? 'data-rscore' : 'data-score');
+    if (isAdmin) {
+      const resScores = { ...state.resScores };
+      const sc = { ...(resScores[mid] || {}) };
+      if (clean === '') delete sc[side]; else sc[side] = +clean;
+      if (sc.h == null && sc.a == null) delete resScores[mid]; else resScores[mid] = sc;
+      const d = dirFromScore(resScores[mid]);
+      const prev = (state.results || {})[mid];
+      const results = { ...state.results };
+      const adv = { ...state.adv };
+      if (d) { results[mid] = d; if (d !== 'X') delete adv[mid]; }
+      saveResultsState(results, adv, resScores);
+      if (d && d !== prev && (d === 'X' || prev === 'X')) { render(); return; } // adv row appears/disappears
+      refreshDirButtons(mid, 'result', 'res-selected');
+    } else {
+      const scores = { ...state.scores };
+      const sc = { ...(scores[mid] || {}) };
+      if (clean === '') delete sc[side]; else sc[side] = +clean;
+      if (sc.h == null && sc.a == null) delete scores[mid]; else scores[mid] = sc;
+      state.scores = scores;
+      const d = dirFromScore(scores[mid]);
+      if (d) state.picks = { ...state.picks, [mid]: d }; // exact score implies the 1X2 pick
+      persistMe();
+      refreshDirButtons(mid, 'pick', 'selected');
+      updateSubmitBar();
+    }
+    return;
+  }
   const el = e.target.closest('[data-input]');
   if (!el) return;
   if (el.getAttribute('data-input') === 'name') {
@@ -562,11 +749,21 @@ root.addEventListener('keydown', e => {
   const me = Store.loadMe();
   state.name = me.name || '';
   state.picks = me.picks || {};
+  state.scores = me.scores || {};
   state.submitted = !!me.submitted;
   const r = Store.loadResults();
   state.results = r.results;
   state.adv = r.adv;
+  state.resScores = r.scores || {};
   state.lang = Store.loadLang();
+  try { state.helpOpen = localStorage.getItem('wc26-oranim-help') !== '1'; } catch (err) { state.helpOpen = true; }
   render();
   setInterval(tick, 1000);
+  // Shared-backend mode: refresh when other devices' data arrives, but never
+  // mid-typing — a focused input survives until the next sync cycle.
+  Store.startSync(() => {
+    const a = document.activeElement;
+    if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) return;
+    render();
+  });
 })();
