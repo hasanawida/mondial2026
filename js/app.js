@@ -197,8 +197,12 @@ function renderPicksScreen(all) {
       helpCard +
       '<div class="name-card">' +
         '<span class="name-label">' + esc(S.yourName) + '</span>' +
-        '<input class="name-input" data-input="name" value="' + esc(state.name) + '" placeholder="' + esc(S.namePh) + '">' +
+        (state.submitted && state.name.trim()
+          ? '<span class="name-fixed">' + esc(state.name) + '</span><span class="name-lock">\ud83d\udd12</span>'
+          : '<input class="name-input" data-input="name" value="' + esc(state.name) + '" placeholder="' + esc(S.namePh) + '">') +
       '</div>' +
+      (state.submitted && state.name.trim()
+        ? '<div class="name-note">' + esc(S.nameLockedNote) + '</div>' : '') +
       cards + shareBtn +
     '</div>' +
     '<div class="submit-bar">' +
@@ -377,6 +381,56 @@ function renderPinScreen() {
     '</div>';
 }
 
+/* Pull finished-match scores from TheSportsDB (free, keyless, browser-callable)
+   and stage them for one-tap admin confirmation. FIFA World Cup league id 4429. */
+function fetchLiveResults() {
+  state.fetchState = 'loading';
+  state.fetched = [];
+  render();
+  fetch('https://www.thesportsdb.com/api/v1/json/3/eventsseason.php?id=4429&s=2026')
+    .then(r => { if (!r.ok) throw new Error('http'); return r.json(); })
+    .then(data => {
+      const events = (data && data.events) || [];
+      const all = resolved();
+      const found = [];
+      all.filter(m => m.known).forEach(m => {
+        const homeEn = ((TEAM_T[m.home[0]] || {}).en || m.home[0]).toLowerCase();
+        const awayEn = ((TEAM_T[m.away[0]] || {}).en || m.away[0]).toLowerCase();
+        const ev = events.find(e => {
+          const eh = (e.strHomeTeam || '').toLowerCase(), ea = (e.strAwayTeam || '').toLowerCase();
+          return (eh.includes(homeEn) && ea.includes(awayEn)) || (eh.includes(awayEn) && ea.includes(homeEn));
+        });
+        if (!ev || ev.intHomeScore == null || ev.intAwayScore == null) return;
+        const swapped = (ev.strHomeTeam || '').toLowerCase().includes(awayEn);
+        const h = +(swapped ? ev.intAwayScore : ev.intHomeScore);
+        const a = +(swapped ? ev.intHomeScore : ev.intAwayScore);
+        const cur = (state.resScores || {})[m.id];
+        if (cur && +cur.h === h && +cur.a === a) return; // already applied
+        found.push({ mid: m.id, h, a, title: tName(m.home[0]) + ' \u2014 ' + tName(m.away[0]) });
+      });
+      state.fetchState = found.length ? 'found' : 'none';
+      state.fetched = found;
+      render();
+    })
+    .catch(() => { state.fetchState = 'error'; render(); });
+}
+
+function applyFetched() {
+  const results = { ...state.results };
+  const resScores = { ...state.resScores };
+  const adv = { ...state.adv };
+  (state.fetched || []).forEach(fr => {
+    resScores[fr.mid] = { h: fr.h, a: fr.a };
+    const d = fr.h > fr.a ? '1' : fr.h < fr.a ? '2' : 'X';
+    results[fr.mid] = d;
+    if (d !== 'X') delete adv[fr.mid];
+  });
+  saveResultsState(results, adv, resScores);
+  state.fetchState = '';
+  state.fetched = [];
+  showToast(t().fetchApplied);
+}
+
 function renderAdminScreen(all) {
   const S = t();
   const cards = all.filter(m => m.known).map(m => {
@@ -439,9 +493,26 @@ function renderAdminScreen(all) {
       (groups.length ? groups.join('') : '<div class="breakdown-empty">' + esc(S.adminPicksEmpty) + '</div>') +
     '</div>';
 
+  const fs = state.fetchState;
+  let fetchCard = '<button class="fetch-btn" data-action="fetch-results"' + (fs === 'loading' ? ' disabled' : '') + '>' +
+    esc(fs === 'loading' ? S.fetching : S.fetchResults) + '</button>';
+  if (fs === 'none' || fs === 'error') {
+    fetchCard += '<div class="fetch-msg">' + esc(fs === 'none' ? S.fetchNone : S.fetchErr) + '</div>';
+  } else if (fs === 'found') {
+    fetchCard += '<div class="fetch-preview">' +
+      '<div class="fetch-title">' + esc(S.fetchFoundA + state.fetched.length + S.fetchFoundB) + '</div>' +
+      state.fetched.map(fr => '<div class="fetch-row"><span>' + esc(fr.title) + '</span><b>' + fr.h + ':' + fr.a + '</b></div>').join('') +
+      '<div class="fetch-actions">' +
+        '<button class="fetch-apply" data-action="fetch-apply">' + esc(S.fetchApply) + '</button>' +
+        '<button class="fetch-cancel" data-action="fetch-cancel">' + esc(S.fetchCancel) + '</button>' +
+      '</div>' +
+    '</div>';
+  }
+
   return '' +
     '<div class="screen-admin">' +
       '<div class="admin-info">' + esc(S.adminInfo) + '</div>' +
+      '<div class="fetch-card">' + fetchCard + '</div>' +
       cards +
       '<button class="reset-btn" data-action="reset-results">' + esc(S.resetResults) + '</button>' +
       partsSection +
@@ -637,6 +708,17 @@ root.addEventListener('click', e => {
       break;
     case 'row':
       state.expandedRow = state.expandedRow === val ? null : val;
+      render();
+      break;
+    case 'fetch-results':
+      fetchLiveResults();
+      break;
+    case 'fetch-apply':
+      applyFetched();
+      break;
+    case 'fetch-cancel':
+      state.fetchState = '';
+      state.fetched = [];
       render();
       break;
     case 'remove-participant': {

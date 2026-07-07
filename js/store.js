@@ -9,8 +9,8 @@
    deals with where data lives. */
 
 const SUPABASE = {
-  url: '',     // e.g. 'https://abcdefgh.supabase.co'  (Project Settings → API)
-  anonKey: ''  // the public "anon" key from the same page
+  url: 'https://rxnkuuhoerperfyibokn.supabase.co',
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4bmt1dWhvZXJwZXJmeWlib2tuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NTQyMTQsImV4cCI6MjA5OTAzMDIxNH0.NeD81EG8EiYjHvzSiJ9Jhd_xqnvm6ppAvqY9yPaeEq0'
 };
 
 const KEYS = {

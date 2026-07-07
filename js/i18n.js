@@ -43,6 +43,7 @@ const STRINGS = {
     nameTaken: 'השם הזה כבר תפוס — הוסיפו שם משפחה או כינוי',
     rowNoRevealed: 'אין עדיין ניחושים חשופים — ייחשפו אחרי נעילת המשחקים',
     rowHiddenA: 'ועוד ', rowHiddenB: ' ניחושים מוסתרים עד נעילת המשחק',
+    nameLockedNote: 'השם קבוע אחרי השליחה הראשונה — לשינוי פנו למנהל התחרות',
     adminParticipants: 'ניהול משתתפים', adminPartNote: 'לחיצה על ✕ מסירה את המשתתף ואת כל הניחושים שלו',
     removeConfirmA: 'להסיר את "', removeConfirmB: '" מהתחרות?',
     helpTitle: '❓ איך מנחשים? — הסבר קצר',
@@ -52,7 +53,12 @@ const STRINGS = {
     helpS3: 'רוצים בונוס? מקלידים גם תוצאה מדויקת (למשל 2:1) מתחת לכפתורים',
     helpS4: 'לוחצים על הכפתור הגדול למטה — "שליחת ניחושים"',
     helpS5: 'אפשר לשנות ניחוש עד שריקת הפתיחה — ואז המשחק ננעל',
-    helpScoring: 'ניקוד: כיוון נכון = נקודה · תוצאה מדויקת בול = 3 נקודות ⭐'
+    helpScoring: 'ניקוד: כיוון נכון = נקודה · תוצאה מדויקת בול = 3 נקודות ⭐',
+    fetchResults: '🔄 משיכת תוצאות מהאינטרנט', fetching: 'מושך תוצאות…',
+    fetchNone: 'לא נמצאו תוצאות חדשות — נסו מאוחר יותר או הזינו ידנית',
+    fetchErr: 'המשיכה נכשלה — בדקו חיבור לאינטרנט ונסו שוב',
+    fetchFoundA: 'נמצאו ', fetchFoundB: ' תוצאות — לאשר את העדכון?',
+    fetchApply: 'אישור ועדכון הכל', fetchCancel: 'ביטול', fetchApplied: 'התוצאות עודכנו!'
   },
   ar: {
     title: 'دوري التوقعات · مونديال 2026', subtitle: 'دار المسنين إشكولوت أورانيم — جديرا',
@@ -95,6 +101,7 @@ const STRINGS = {
     nameTaken: 'هذا الاسم مستخدم بالفعل — أضيفوا اسم العائلة أو لقبًا',
     rowNoRevealed: 'لا توجد توقعات مكشوفة بعد — تُكشف بعد إقفال المباريات',
     rowHiddenA: 'و', rowHiddenB: ' توقعات مخفية حتى إقفال المباراة',
+    nameLockedNote: 'الاسم ثابت بعد الإرسال الأول — لتغييره راجعوا مدير المسابقة',
     adminParticipants: 'إدارة المشاركين', adminPartNote: 'الضغط على ✕ يزيل المشارك وكل توقعاته',
     removeConfirmA: 'إزالة "', removeConfirmB: '" من المسابقة؟',
     helpTitle: '❓ كيف نتوقع؟ — شرح قصير',
@@ -104,7 +111,12 @@ const STRINGS = {
     helpS3: 'للبونص: أدخلوا نتيجة دقيقة (مثل 2:1) تحت الأزرار',
     helpS4: 'اضغطوا الزر الكبير في الأسفل — "إرسال التوقعات"',
     helpS5: 'يمكن تغيير التوقع حتى صافرة البداية — بعدها تُقفل المباراة',
-    helpScoring: 'النقاط: اتجاه صحيح = نقطة · نتيجة دقيقة = 3 نقاط ⭐'
+    helpScoring: 'النقاط: اتجاه صحيح = نقطة · نتيجة دقيقة = 3 نقاط ⭐',
+    fetchResults: '🔄 سحب النتائج من الإنترنت', fetching: 'يسحب النتائج…',
+    fetchNone: 'لم يتم العثور على نتائج جديدة — حاولوا لاحقًا أو أدخلوها يدويًا',
+    fetchErr: 'فشل السحب — تحققوا من الاتصال وحاولوا مجددًا',
+    fetchFoundA: 'تم العثور على ', fetchFoundB: ' نتائج — تأكيد التحديث؟',
+    fetchApply: 'تأكيد وتحديث الكل', fetchCancel: 'إلغاء', fetchApplied: 'تم تحديث النتائج!'
   },
   en: {
     title: 'Prediction League · World Cup 2026', subtitle: 'Eshkolot Oranim Care Home — Gedera',
@@ -147,6 +159,7 @@ const STRINGS = {
     nameTaken: 'This name is already taken — add a last name or nickname',
     rowNoRevealed: 'No revealed picks yet — they appear once matches lock',
     rowHiddenA: 'Plus ', rowHiddenB: ' picks hidden until the match locks',
+    nameLockedNote: 'Your name is fixed after the first submit — ask the competition admin to change it',
     adminParticipants: 'Manage participants', adminPartNote: 'Tap ✕ to remove a participant and all their picks',
     removeConfirmA: 'Remove "', removeConfirmB: '" from the competition?',
     helpTitle: '❓ How to play — quick guide',
@@ -156,7 +169,12 @@ const STRINGS = {
     helpS3: 'Want a bonus? Also type an exact score (e.g. 2:1) below the buttons',
     helpS4: 'Tap the big button at the bottom — "Send predictions"',
     helpS5: 'You can change picks until kickoff — then the match locks',
-    helpScoring: 'Scoring: correct direction = 1 pt · exact score = 3 pts ⭐'
+    helpScoring: 'Scoring: correct direction = 1 pt · exact score = 3 pts ⭐',
+    fetchResults: '🔄 Fetch results from the internet', fetching: 'Fetching results…',
+    fetchNone: 'No new results found — try later or enter manually',
+    fetchErr: 'Fetch failed — check your connection and try again',
+    fetchFoundA: 'Found ', fetchFoundB: ' results — apply the update?',
+    fetchApply: 'Apply all', fetchCancel: 'Cancel', fetchApplied: 'Results updated!'
   }
 };
 

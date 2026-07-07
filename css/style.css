@@ -102,6 +102,9 @@ button { font-family: inherit; }
   font-family: 'Heebo', 'Rubik', sans-serif; font-size: 16.5px; font-weight: 600;
 }
 .name-input::placeholder { color: #6E655A; }
+.name-fixed { flex: 1; min-width: 0; font-size: 16.5px; font-weight: 700; color: #F7F1E7; }
+.name-lock { font-size: 14px; flex: none; }
+.name-note { font-size: 11.5px; color: #6E655A; text-align: center; margin-top: -6px; }
 
 .match-card {
   background: #221D18; border: 1px solid rgba(255,255,255,.07);
@@ -328,6 +331,31 @@ button { font-family: inherit; }
 }
 .row-detail-empty { font-size: 13.5px; color: #8D8375; text-align: center; padding: 4px 0; }
 .row-detail-note { font-size: 12px; color: #6E655A; text-align: center; padding-top: 2px; }
+
+/* ---- Auto-fetch results (admin) ---- */
+.fetch-card { display: flex; flex-direction: column; gap: 8px; }
+.fetch-btn {
+  width: 100%; padding: 12px 0; border-radius: 12px; cursor: pointer; font-size: 15px; font-weight: 800;
+  background: rgba(78,126,107,.14); border: 1.5px solid rgba(78,126,107,.45); color: #8FCDB2;
+}
+.fetch-btn:disabled { opacity: .6; cursor: default; }
+.fetch-msg { font-size: 13px; color: #B7AC9E; text-align: center; padding: 2px 0; }
+.fetch-preview {
+  background: #221D18; border: 1px solid rgba(78,126,107,.45); border-radius: 12px;
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
+}
+.fetch-title { font-size: 14px; font-weight: 800; color: #C7E0D5; text-align: center; }
+.fetch-row { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; color: #EFE9DF; }
+.fetch-row b { color: #8FCDB2; }
+.fetch-actions { display: flex; gap: 8px; margin-top: 4px; }
+.fetch-apply {
+  flex: 2; padding: 10px 0; border-radius: 10px; border: none; cursor: pointer;
+  background: #4E7E6B; color: #F7F3EC; font-size: 14px; font-weight: 800;
+}
+.fetch-cancel {
+  flex: 1; padding: 10px 0; border-radius: 10px; cursor: pointer;
+  background: #2A241E; border: 1.5px solid rgba(255,255,255,.1); color: #B7AC9E; font-size: 14px; font-weight: 700;
+}
 
 /* ---- Admin participants management ---- */
 .part-row {
