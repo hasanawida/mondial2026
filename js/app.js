@@ -400,13 +400,30 @@ function renderPinScreen() {
 
 /* Pull finished-match scores from TheSportsDB (free, keyless, browser-callable)
    and stage them for one-tap admin confirmation. FIFA World Cup league id 4429. */
-const RESULTS_API = 'https://www.thesportsdb.com/api/v1/json/3/eventsseason.php?id=4429&s=2026';
+/* The free-key season endpoint caps at 5 stale events, so results are fetched
+   per match day instead: eventsday.php returns every game of that date. */
+const EVENTS_DAY_API = 'https://www.thesportsdb.com/api/v1/json/3/eventsday.php?l=4429&d=';
 const AUTO_FETCH_MS = 5 * 60 * 1000;
-const FINAL_STATUSES = ['FT', 'AET', 'PEN', 'MATCH FINISHED', 'FINISHED'];
+const FINAL_STATUSES = ['FT', 'AET', 'AP', 'PEN', 'MATCH FINISHED', 'FINISHED'];
 
-/* Match API events to known bracket matches; returns [{mid,h,a,title}] for
-   scores that differ from what's already applied. finalOnly keeps only events
-   the feed marks finished \u2014 the auto path must never grab a mid-game score. */
+/* Fetch all API events for the match days we still need. includeApplied
+   widens to every known match (manual refetch can correct an applied score). */
+function fetchEventsForDays(includeApplied) {
+  const dates = [];
+  resolved().forEach(m => {
+    if (!m.known || !m.iso) return;
+    if (!includeApplied && (state.results || {})[m.id] && (state.resScores || {})[m.id]) return;
+    if (dates.indexOf(m.iso) === -1) dates.push(m.iso);
+  });
+  return Promise.all(dates.map(d =>
+    fetch(EVENTS_DAY_API + d).then(r => r.ok ? r.json() : null).catch(() => null)
+  )).then(days => days.reduce((acc, x) => acc.concat((x && x.events) || []), []));
+}
+
+/* Match API events to known bracket matches; returns [{mid,h,a,adv?,title}]
+   for scores that differ from what's already applied. adv is the side that
+   advanced on penalties after a draw. finalOnly keeps only events the feed
+   marks finished \u2014 the auto path must never grab a mid-game score. */
 function collectFetchedResults(events, finalOnly) {
   const all = resolved();
   const found = [];
@@ -422,9 +439,16 @@ function collectFetchedResults(events, finalOnly) {
     const swapped = (ev.strHomeTeam || '').toLowerCase().includes(awayEn);
     const h = +(swapped ? ev.intAwayScore : ev.intHomeScore);
     const a = +(swapped ? ev.intHomeScore : ev.intAwayScore);
+    let adv = null;
+    if (h === a && ev.intHomeScoreExtra != null && ev.intAwayScoreExtra != null) {
+      const ph = +(swapped ? ev.intAwayScoreExtra : ev.intHomeScoreExtra);
+      const pa = +(swapped ? ev.intHomeScoreExtra : ev.intAwayScoreExtra);
+      if (ph !== pa) adv = ph > pa ? m.home[0] : m.away[0];
+    }
     const cur = (state.resScores || {})[m.id];
-    if (cur && +cur.h === h && +cur.a === a) return; // already applied
-    found.push({ mid: m.id, h, a, title: tName(m.home[0]) + ' \u2014 ' + tName(m.away[0]) });
+    const curAdv = (state.adv || {})[m.id];
+    if (cur && +cur.h === h && +cur.a === a && (!adv || curAdv === adv)) return; // already applied
+    found.push({ mid: m.id, h, a, adv, title: tName(m.home[0]) + ' \u2014 ' + tName(m.away[0]) });
   });
   return found;
 }
@@ -433,10 +457,9 @@ function fetchLiveResults() {
   state.fetchState = 'loading';
   state.fetched = [];
   render();
-  fetch(RESULTS_API)
-    .then(r => { if (!r.ok) throw new Error('http'); return r.json(); })
-    .then(data => {
-      const found = collectFetchedResults((data && data.events) || [], false);
+  fetchEventsForDays(true)
+    .then(events => {
+      const found = collectFetchedResults(events, false);
       state.fetchState = found.length ? 'found' : 'none';
       state.fetched = found;
       render();
@@ -451,38 +474,34 @@ function fetchLiveResults() {
 function autoFetchResults() {
   if (document.hidden) return;
   const pending = resolved().some(m =>
-    m.known && (!(state.results || {})[m.id] || !(state.resScores || {})[m.id]));
+    m.known && m.iso && (!(state.results || {})[m.id] || !(state.resScores || {})[m.id]));
   if (!pending) return;
-  fetch(RESULTS_API)
-    .then(r => { if (!r.ok) throw new Error('http'); return r.json(); })
-    .then(data => {
-      const found = collectFetchedResults((data && data.events) || [], true);
+  fetchEventsForDays(false)
+    .then(events => {
+      const found = collectFetchedResults(events, true);
       if (!found.length) return;
-      const results = { ...state.results }, resScores = { ...state.resScores }, adv = { ...state.adv };
-      found.forEach(fr => {
-        resScores[fr.mid] = { h: fr.h, a: fr.a };
-        const d = dirFromScore({ h: fr.h, a: fr.a });
-        results[fr.mid] = d;
-        if (d !== 'X') delete adv[fr.mid];
-      });
-      saveResultsState(results, adv, resScores);
+      applyFoundResults(found);
       showToast(t().fetchApplied);
       safeRender();
     })
     .catch(() => {});
 }
 
-function applyFetched() {
-  const results = { ...state.results };
-  const resScores = { ...state.resScores };
-  const adv = { ...state.adv };
-  (state.fetched || []).forEach(fr => {
+/* Shared by the auto path and the admin's confirm button. */
+function applyFoundResults(found) {
+  const results = { ...state.results }, resScores = { ...state.resScores }, adv = { ...state.adv };
+  found.forEach(fr => {
     resScores[fr.mid] = { h: fr.h, a: fr.a };
     const d = dirFromScore({ h: fr.h, a: fr.a });
     results[fr.mid] = d;
     if (d !== 'X') delete adv[fr.mid];
+    else if (fr.adv) adv[fr.mid] = fr.adv; // decided on penalties — advance the shootout winner
   });
   saveResultsState(results, adv, resScores);
+}
+
+function applyFetched() {
+  applyFoundResults(state.fetched || []);
   state.fetchState = '';
   state.fetched = [];
   showToast(t().fetchApplied);

@@ -25,15 +25,15 @@ const LOCK_ATS = {
 function buildMatches(t, tName) {
   const c = key => FLAG_COLORS[key];
   return [
-    { id: 'r16a', round: t.r16, date: t.d_r16, home: ['ארגנטינה', c('ארגנטינה')], away: ['מצרים', c('מצרים')], locked: true, note: t.lockToday },
-    { id: 'r16b', round: t.r16, date: t.d_r16, home: ['שווייץ', c('שווייץ')], away: ['קולומביה', c('קולומביה')], locked: true, note: t.lockToday },
-    { id: 'qf1', round: t.qf + ' · ' + t.cBoston, date: t.d_qf1, lockAt: Date.parse('2026-07-09T23:00:00+03:00'), home: ['צרפת', c('צרפת')], away: ['מרוקו', c('מרוקו')] },
-    { id: 'qf2', round: t.qf + ' · ' + t.cLA, date: t.d_qf2, lockAt: Date.parse('2026-07-10T22:00:00+03:00'), home: ['ספרד', c('ספרד')], away: ['בלגיה', c('בלגיה')] },
-    { id: 'qf3', round: t.qf + ' · ' + t.cMiami, date: t.d_qf3, lockAt: Date.parse('2026-07-12T00:00:00+03:00'), home: ['נורווגיה', c('נורווגיה')], away: ['אנגליה', c('אנגליה')] },
-    { id: 'qf4', round: t.qf + ' · ' + t.cKC, date: t.d_qf4, home: [tName('ארגנטינה') + ' / ' + tName('מצרים'), TBD_COLORS], away: [tName('שווייץ') + ' / ' + tName('קולומביה'), TBD_COLORS], locked: true, note: t.opensTonight },
-    { id: 'sf1', round: t.sf + ' · ' + t.cDallas, date: t.d_sf1, home: [t.winnerQF + ' 1', TBD_COLORS], away: [t.winnerQF + ' 2', TBD_COLORS], locked: true, note: t.opensAfterQF },
-    { id: 'sf2', round: t.sf + ' · ' + t.cAtlanta, date: t.d_sf2, home: [t.winnerQF + ' 3', TBD_COLORS], away: [t.winnerQF + ' 4', TBD_COLORS], locked: true, note: t.opensAfterQF },
-    { id: 'fin', round: t.finRound + ' · ' + t.cNJ, date: t.d_fin, home: [t.winnerSF + ' 1', TBD_COLORS], away: [t.winnerSF + ' 2', TBD_COLORS], locked: true, note: t.opensAfterSF }
+    { id: 'r16a', round: t.r16, date: t.d_r16, iso: '2026-07-07', home: ['ארגנטינה', c('ארגנטינה')], away: ['מצרים', c('מצרים')], locked: true, note: t.lockToday },
+    { id: 'r16b', round: t.r16, date: t.d_r16, iso: '2026-07-07', home: ['שווייץ', c('שווייץ')], away: ['קולומביה', c('קולומביה')], locked: true, note: t.lockToday },
+    { id: 'qf1', round: t.qf + ' · ' + t.cBoston, date: t.d_qf1, iso: '2026-07-09', lockAt: Date.parse('2026-07-09T23:00:00+03:00'), home: ['צרפת', c('צרפת')], away: ['מרוקו', c('מרוקו')] },
+    { id: 'qf2', round: t.qf + ' · ' + t.cLA, date: t.d_qf2, iso: '2026-07-10', lockAt: Date.parse('2026-07-10T22:00:00+03:00'), home: ['ספרד', c('ספרד')], away: ['בלגיה', c('בלגיה')] },
+    { id: 'qf3', round: t.qf + ' · ' + t.cMiami, date: t.d_qf3, iso: '2026-07-11', lockAt: Date.parse('2026-07-12T00:00:00+03:00'), home: ['נורווגיה', c('נורווגיה')], away: ['אנגליה', c('אנגליה')] },
+    { id: 'qf4', round: t.qf + ' · ' + t.cKC, date: t.d_qf4, iso: '2026-07-12', home: [tName('ארגנטינה') + ' / ' + tName('מצרים'), TBD_COLORS], away: [tName('שווייץ') + ' / ' + tName('קולומביה'), TBD_COLORS], locked: true, note: t.opensTonight },
+    { id: 'sf1', round: t.sf + ' · ' + t.cDallas, date: t.d_sf1, iso: '2026-07-14', home: [t.winnerQF + ' 1', TBD_COLORS], away: [t.winnerQF + ' 2', TBD_COLORS], locked: true, note: t.opensAfterQF },
+    { id: 'sf2', round: t.sf + ' · ' + t.cAtlanta, date: t.d_sf2, iso: '2026-07-15', home: [t.winnerQF + ' 3', TBD_COLORS], away: [t.winnerQF + ' 4', TBD_COLORS], locked: true, note: t.opensAfterQF },
+    { id: 'fin', round: t.finRound + ' · ' + t.cNJ, date: t.d_fin, iso: '2026-07-19', home: [t.winnerSF + ' 1', TBD_COLORS], away: [t.winnerSF + ' 2', TBD_COLORS], locked: true, note: t.opensAfterSF }
   ];
 }
 
