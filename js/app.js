@@ -400,36 +400,76 @@ function renderPinScreen() {
 
 /* Pull finished-match scores from TheSportsDB (free, keyless, browser-callable)
    and stage them for one-tap admin confirmation. FIFA World Cup league id 4429. */
+const RESULTS_API = 'https://www.thesportsdb.com/api/v1/json/3/eventsseason.php?id=4429&s=2026';
+const AUTO_FETCH_MS = 5 * 60 * 1000;
+const FINAL_STATUSES = ['FT', 'AET', 'PEN', 'MATCH FINISHED', 'FINISHED'];
+
+/* Match API events to known bracket matches; returns [{mid,h,a,title}] for
+   scores that differ from what's already applied. finalOnly keeps only events
+   the feed marks finished \u2014 the auto path must never grab a mid-game score. */
+function collectFetchedResults(events, finalOnly) {
+  const all = resolved();
+  const found = [];
+  all.filter(m => m.known).forEach(m => {
+    const homeEn = ((TEAM_T[m.home[0]] || {}).en || m.home[0]).toLowerCase();
+    const awayEn = ((TEAM_T[m.away[0]] || {}).en || m.away[0]).toLowerCase();
+    const ev = events.find(e => {
+      const eh = (e.strHomeTeam || '').toLowerCase(), ea = (e.strAwayTeam || '').toLowerCase();
+      return (eh.includes(homeEn) && ea.includes(awayEn)) || (eh.includes(awayEn) && ea.includes(homeEn));
+    });
+    if (!ev || ev.intHomeScore == null || ev.intAwayScore == null) return;
+    if (finalOnly && FINAL_STATUSES.indexOf((ev.strStatus || '').toUpperCase()) === -1) return;
+    const swapped = (ev.strHomeTeam || '').toLowerCase().includes(awayEn);
+    const h = +(swapped ? ev.intAwayScore : ev.intHomeScore);
+    const a = +(swapped ? ev.intHomeScore : ev.intAwayScore);
+    const cur = (state.resScores || {})[m.id];
+    if (cur && +cur.h === h && +cur.a === a) return; // already applied
+    found.push({ mid: m.id, h, a, title: tName(m.home[0]) + ' \u2014 ' + tName(m.away[0]) });
+  });
+  return found;
+}
+
 function fetchLiveResults() {
   state.fetchState = 'loading';
   state.fetched = [];
   render();
-  fetch('https://www.thesportsdb.com/api/v1/json/3/eventsseason.php?id=4429&s=2026')
+  fetch(RESULTS_API)
     .then(r => { if (!r.ok) throw new Error('http'); return r.json(); })
     .then(data => {
-      const events = (data && data.events) || [];
-      const all = resolved();
-      const found = [];
-      all.filter(m => m.known).forEach(m => {
-        const homeEn = ((TEAM_T[m.home[0]] || {}).en || m.home[0]).toLowerCase();
-        const awayEn = ((TEAM_T[m.away[0]] || {}).en || m.away[0]).toLowerCase();
-        const ev = events.find(e => {
-          const eh = (e.strHomeTeam || '').toLowerCase(), ea = (e.strAwayTeam || '').toLowerCase();
-          return (eh.includes(homeEn) && ea.includes(awayEn)) || (eh.includes(awayEn) && ea.includes(homeEn));
-        });
-        if (!ev || ev.intHomeScore == null || ev.intAwayScore == null) return;
-        const swapped = (ev.strHomeTeam || '').toLowerCase().includes(awayEn);
-        const h = +(swapped ? ev.intAwayScore : ev.intHomeScore);
-        const a = +(swapped ? ev.intHomeScore : ev.intAwayScore);
-        const cur = (state.resScores || {})[m.id];
-        if (cur && +cur.h === h && +cur.a === a) return; // already applied
-        found.push({ mid: m.id, h, a, title: tName(m.home[0]) + ' \u2014 ' + tName(m.away[0]) });
-      });
+      const found = collectFetchedResults((data && data.events) || [], false);
       state.fetchState = found.length ? 'found' : 'none';
       state.fetched = found;
       render();
     })
     .catch(() => { state.fetchState = 'error'; render(); });
+}
+
+/* Automatic results: while the tab is visible and some known match still lacks
+   a result or exact score, poll the feed and apply finished matches on its own
+   (no admin tap). Applying writes to the shared backend; concurrent devices
+   write identical values, so races are harmless. */
+function autoFetchResults() {
+  if (document.hidden) return;
+  const pending = resolved().some(m =>
+    m.known && (!(state.results || {})[m.id] || !(state.resScores || {})[m.id]));
+  if (!pending) return;
+  fetch(RESULTS_API)
+    .then(r => { if (!r.ok) throw new Error('http'); return r.json(); })
+    .then(data => {
+      const found = collectFetchedResults((data && data.events) || [], true);
+      if (!found.length) return;
+      const results = { ...state.results }, resScores = { ...state.resScores }, adv = { ...state.adv };
+      found.forEach(fr => {
+        resScores[fr.mid] = { h: fr.h, a: fr.a };
+        const d = dirFromScore({ h: fr.h, a: fr.a });
+        results[fr.mid] = d;
+        if (d !== 'X') delete adv[fr.mid];
+      });
+      saveResultsState(results, adv, resScores);
+      showToast(t().fetchApplied);
+      safeRender();
+    })
+    .catch(() => {});
 }
 
 function applyFetched() {
@@ -925,6 +965,10 @@ root.addEventListener('keydown', e => {
     }
     safeRender();
   });
+  // Automatic result fetching — first check shortly after the shared sync
+  // lands, then a steady poll.
+  setTimeout(autoFetchResults, 3000);
+  setInterval(autoFetchResults, AUTO_FETCH_MS);
   root.addEventListener('focusout', () => {
     if (state.pendingRender) setTimeout(() => { if (state.pendingRender) safeRender(); }, 80);
   });
